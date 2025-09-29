@@ -1,7 +1,7 @@
 // Example of how to write to the serial port in non-canonical mode
 //
 // Modified by: Eduardo Nuno Almeida [enalmeida@fe.up.pt]
-
+#include <signal.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +22,9 @@
 int fd = -1;           // File descriptor for open serial port
 struct termios oldtio; // Serial port settings to restore on closing
 volatile int STOP = FALSE;
+int alarmEnabled = FALSE;
+int alarmCount = 0;
+
 
 int openSerialPort(const char *serialPort, int baudRate);
 int closeSerialPort();
@@ -31,6 +34,14 @@ int writeBytesSerialPort(const unsigned char *bytes, int nBytes);
 // ---------------------------------------------------
 // MAIN
 // ---------------------------------------------------
+void alarmHandler(int signal)
+{
+    alarmEnabled = FALSE;
+    alarmCount++;
+
+    printf("Alarm #%d received\n", alarmCount);
+}
+
 int main(int argc, char *argv[])
 {
     if (argc < 2)
@@ -41,7 +52,18 @@ int main(int argc, char *argv[])
                argv[0],
                argv[0]);
         exit(1);
+    
     }
+
+    struct sigaction act = {0};
+    act.sa_handler = &alarmHandler;
+    if (sigaction(SIGALRM, &act, NULL) == -1)
+    {
+        perror("sigaction");
+        exit(1);
+    }
+
+    printf("Alarm configured\n");
 
     // Open serial port device for reading and writing, and not as controlling tty
     // because we don't want to get killed if linenoise sends CTRL-C.
@@ -58,23 +80,31 @@ int main(int argc, char *argv[])
     printf("Serial port %s opened\n", serialPort);
 
     // Create string to send
-    unsigned char buf[BUF_SIZE] = {0};
+    unsigned char SET[5];
+    SET[0] = 0x7E;
+    SET[1] = 0x03;
+    SET[2] = 0x03;
+    SET[3] = SET[1] ^ SET[2];
+    SET[4] = 0X7E;
 
-    for (int i = 0; i < BUF_SIZE; i++)
-    {
-        buf[i] = 'a' + i % 26;
-    }
-
-    // In non-canonical mode, '\n' does not end the writing.
-    // Test this condition by placing a '\n' in the middle of the buffer.
-    // The whole buffer must be sent even with the '\n'.
-    buf[5] = '\n';
-
-    int bytes = writeBytesSerialPort(buf, BUF_SIZE);
+    int bytes = writeBytesSerialPort(SET, 5);
     printf("%d bytes written to serial port\n", bytes);
 
     // Wait until all bytes have been written to the serial port
     sleep(1);
+    while (alarmCount < 4)
+    {
+        if (alarmEnabled == FALSE)
+        {
+            alarm(3); // Set alarm to be triggered in 3s
+            alarmEnabled = TRUE;
+        }
+    }
+    unsigned char byte;
+    int rc = readByteSerialPort(&byte);  
+
+
+
 
     // Close serial port
     if (closeSerialPort() < 0)
