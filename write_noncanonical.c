@@ -17,7 +17,7 @@
 #define TRUE 1
 
 #define BAUDRATE 38400
-#define BUF_SIZE 256
+#define BUF_SIZE 5
 
 int fd = -1;           // File descriptor for open serial port
 struct termios oldtio; // Serial port settings to restore on closing
@@ -57,13 +57,18 @@ int main(int argc, char *argv[])
 
     printf("Serial port %s opened\n", serialPort);
 
-    // Create string to send
-    unsigned char buf[BUF_SIZE] = {0};
 
-    for (int i = 0; i < BUF_SIZE; i++)
-    {
-        buf[i] = 'a' + i % 26;
-    }
+    unsigned char buf[BUF_SIZE] = {
+        0x7E,      
+        0x03,       
+        0x03,       
+        0x00,       
+        0x7E        
+    };
+        
+    
+    buf[3]=buf[1]^buf[2];
+    
 
     // In non-canonical mode, '\n' does not end the writing.
     // Test this condition by placing a '\n' in the middle of the buffer.
