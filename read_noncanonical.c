@@ -17,7 +17,11 @@
 #define TRUE 1
 
 #define BAUDRATE 38400
-#define BUF_SIZE 5
+#define BUF_SIZE 256
+
+#define FLAG 0x7E
+#define ADDR_SENDER 0x03
+#define CTRL_RECEIVER 0x07
 
 int fd = -1;           // File descriptor for open serial port
 struct termios oldtio; // Serial port settings to restore on closing
@@ -64,7 +68,10 @@ int main(int argc, char *argv[])
 
     // TODO: Save the received bytes in a buffer array and print it at the end of the program.
     int nBytesBuf = 0;
-
+    unsigned char BCC = 0;
+    unsigned char Flag = 0;
+    unsigned char Address = 0;
+    unsigned char Control = 0;
     while (STOP == FALSE)
     {
         // Read one byte from serial port.
@@ -72,24 +79,44 @@ int main(int argc, char *argv[])
         // In this example, we assume that the byte is always read, which may not be true.
         unsigned char byte;
         int bytes = readByteSerialPort(&byte);
-        nBytesBuf += bytes;
+        if(bytes == -1){
+            printf("Error while reading bytes\n");
+            return 1;
+        }
+        else if(bytes == 0)continue;
 
-        printf("var = 0x%02X\n", byte);
-
+        if(!Flag) Flag = byte;  
+        else if(!Address) Address = byte;
+        else if(!Control) Control = byte;
+        else if(!BCC){
+            BCC = byte;
+            if(BCC == (Address^Control)){
+                printf("BCC received correctlty\n");
+            }else{
+                printf("BCC is wrong\n");
+            }
+            BCC = 1;
+        }else{
+            if(Flag == byte){
+                printf("The message was received correctly\n");
+            }else{
+                printf("The message has an error");
+            }
+            STOP = TRUE;
+        }
 
     }
+    unsigned char buf[BUF_SIZE] = {0};
 
-    unsigned char buf[BUF_SIZE] = {
-        0x7E,
-        0x03,
-        0x07,
-        0x00,
-        0x7E
-    };
-    
-    buf[3] = buf[1] ^ buf[2];
-    buf[5] = '\n';
-    printf("Total bytes received: %d\n", nBytesBuf);
+    buf[0] = FLAG;
+    buf[1] = ADDR_SENDER;
+    buf[2] = CTRL_RECEIVER;
+    buf[3] = ADDR_SENDER ^ CTRL_RECEIVER;
+    buf[4] = FLAG;
+
+    int bytes = writeBytesSerialPort(buf, 5);
+
+    sleep(1);
 
     // Close serial port
     if (closeSerialPort() < 0)
